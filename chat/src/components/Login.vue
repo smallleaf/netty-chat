@@ -26,7 +26,8 @@ export default {
           "content":name
         }
         this.$ws.send(JSON.stringify(data))
-        EventBus.$on("login",()=>{
+        EventBus.$on("loginSuccess",()=>{
+          console.log("登录成功")
           self.$router.push({name:"chat"})
         })
     }

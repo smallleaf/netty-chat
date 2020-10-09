@@ -10,6 +10,7 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpRequestDecoder;
 import io.netty.handler.codec.http.HttpResponseEncoder;
+import io.netty.handler.timeout.IdleStateHandler;
 
 /**
  * \* @Author: yesheng
@@ -28,6 +29,8 @@ public class HttpServer {
                 .childHandler(new ChannelInitializer<SocketChannel>() {
                     @Override
                     protected void initChannel(SocketChannel ch) throws Exception {
+                        //设置心跳
+                        ch.pipeline().addLast(new IdleStateHandler(0,0,10));
                         //设置http解码器
                         ch.pipeline().addLast(new HttpRequestDecoder());
                         //设置http内容处理器

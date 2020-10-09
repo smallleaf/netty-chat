@@ -8,6 +8,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.*;
 import io.netty.handler.codec.http.websocketx.*;
+import io.netty.handler.timeout.IdleStateEvent;
 
 import java.util.List;
 
@@ -34,7 +35,16 @@ public class WebsocketServerHandler extends ChannelInboundHandlerAdapter {
         super.channelRead(ctx, msg);
     }
 
-    private void handleHttpRequest(ChannelHandlerContext ctx,FullHttpRequest req){
+
+    @Override
+    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+        if(evt instanceof IdleStateEvent){
+            closeChannel(ctx.channel());
+        }
+        super.userEventTriggered(ctx, evt);
+    }
+
+    private void handleHttpRequest(ChannelHandlerContext ctx, FullHttpRequest req){
         if(!req.decoderResult().isSuccess()){
             sendHttpResponse(ctx,req,new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,HttpResponseStatus.OK));
             return;
@@ -52,7 +62,9 @@ public class WebsocketServerHandler extends ChannelInboundHandlerAdapter {
         }
         //判断登录没有
         if(Room.getInstance().getUsername(ctx.channel()) == null){
-            ctx.channel().writeAndFlush(new TextWebSocketFrame("login"));
+            RequestModel requestModel = new RequestModel();
+            requestModel.setType(MessageType.LOGIN.code);
+            ctx.channel().writeAndFlush(new TextWebSocketFrame(JSON.toJSONString(requestModel)));
         }
     }
 
@@ -80,23 +92,26 @@ public class WebsocketServerHandler extends ChannelInboundHandlerAdapter {
         if(requestModel.type == MessageType.LOGIN.code){
             String userName = String.valueOf(requestModel.getContent());
             Room.getInstance().addUser(userName,ctx.channel());
-            ctx.channel().writeAndFlush(new TextWebSocketFrame("ok"));
+            RequestModel rm = new RequestModel();
+            rm.setType(MessageType.LOGIN.code);
+            ctx.channel().writeAndFlush(new TextWebSocketFrame(JSON.toJSONString(rm)));
             ChatMessage chatMessage = new ChatMessage();
             chatMessage.setType(1);
             chatMessage.setContent("欢迎"+userName+"进入房间");
-            broadcastMessage(chatMessage);
+            broadcastMessage(chatMessage,MessageType.TEXT.code);
             //推送在线人数
             broadcastMessageOnlineNum(Room.getInstance().channels().size());
             return;
         }
 
-
-        String userName = Room.getInstance().getUsername(ctx.channel());
-        if(userName == null){
+        if(requestModel.type == MessageType.HEARTBEAT.code){
+            RequestModel rm = new RequestModel();
+            rm.setType(MessageType.HEARTBEAT.code);
+            ctx.channel().writeAndFlush(new TextWebSocketFrame(JSON.toJSONString(rm)));
             return;
         }
-        if(requestModel.type == MessageType.HEARTBEAT.code){
-            ctx.channel().writeAndFlush(new TextWebSocketFrame(String.valueOf(requestModel.getContent())));
+        String userName = Room.getInstance().getUsername(ctx.channel());
+        if(userName == null){
             return;
         }
         if(requestModel.type == MessageType.TEXT.code){
@@ -114,7 +129,10 @@ public class WebsocketServerHandler extends ChannelInboundHandlerAdapter {
                     chatMessage.setContent(content);
                     chatMessage.setType(0);
                 }
-                channel.writeAndFlush(new TextWebSocketFrame(JSON.toJSONString(chatMessage)));
+                RequestModel msg = new RequestModel();
+                msg.setType(MessageType.TEXT.code);
+                msg.setContent(JSON.toJSONString(chatMessage));
+                channel.writeAndFlush(new TextWebSocketFrame(JSON.toJSONString(msg)));
             }
             return;
         }
@@ -124,21 +142,32 @@ public class WebsocketServerHandler extends ChannelInboundHandlerAdapter {
         ChatMessage chatMessage = new ChatMessage();
         chatMessage.setType(3);
         chatMessage.setContent(String.valueOf(onlineNum));
+        RequestModel requestModel = new RequestModel();
+        requestModel.setType(MessageType.SYNC_NUM.code);
+        requestModel.setContent(JSON.toJSONString(chatMessage));
         List<Channel> channels = Room.getInstance().channels();
         for (Channel channel : channels) {
-            channel.writeAndFlush(new TextWebSocketFrame(JSON.toJSONString(chatMessage)));
+            channel.writeAndFlush(new TextWebSocketFrame(JSON.toJSONString(requestModel)));
         }
     }
-    public void broadcastMessage(Object msg){
+    public void broadcastMessage(Object msg,int type){
         List<Channel> channels = Room.getInstance().channels();
+        RequestModel requestModel = new RequestModel();
+        requestModel.setType(type);
+        requestModel.setContent(JSON.toJSONString(msg));
         for (Channel channel : channels) {
-            channel.writeAndFlush(new TextWebSocketFrame(JSON.toJSONString(msg)));
+            channel.writeAndFlush(new TextWebSocketFrame(JSON.toJSONString(requestModel)));
         }
     }
 
     @Override
     public void channelUnregistered(ChannelHandlerContext ctx) throws Exception {
-        Room.getInstance().removeUser(ctx.channel());
+        closeChannel(ctx.channel());
         super.channelUnregistered(ctx);
+    }
+
+    private void closeChannel(Channel ch){
+        Room.getInstance().removeUser(ch);
+        ch.writeAndFlush(new CloseWebSocketFrame());
     }
 }

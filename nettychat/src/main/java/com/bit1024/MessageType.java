@@ -13,7 +13,9 @@ public enum MessageType {
     /**
      * 登录
      */
-    LOGIN(3);
+    LOGIN(3),
+
+    SYNC_NUM(4);
 
     int code;
     MessageType(int code){

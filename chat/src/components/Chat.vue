@@ -45,11 +45,12 @@ import Vue from 'vue'
 var datas = []
 EventBus.$on("msg",(msg)=>{
   var data = JSON.parse(msg.msg);
-  if(data.type ==3){
-     document.getElementById("num").innerHTML  = data.content
-  }else{
     datas.push(data)
-  }
+})
+
+EventBus.$on("syncNum",(msg)=>{
+  var data = JSON.parse(msg.msg);
+   document.getElementById("num").innerHTML  = data.content
 })
 var height = document.documentElement.clientHeight 
 var center = height - 180;
